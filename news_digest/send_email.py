@@ -23,17 +23,45 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 465
+
+
+def _send(msg_bytes, sender, recipient, app_password):
+    """Try port 465 (SSL) first, fall back to 587 (STARTTLS)."""
+    errors = []
+    # Port 465 — SSL
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=30) as s:
+            s.login(sender, app_password)
+            s.sendmail(sender, [recipient], msg_bytes)
+        print(f"[info] sent via port 465 (SSL) to {recipient}")
+        return
+    except Exception as e:
+        errors.append(f"port 465: {e}")
+
+    # Port 587 — STARTTLS (common cloud environments block 465)
+    try:
+        with smtplib.SMTP(SMTP_HOST, 587, timeout=30) as s:
+            s.ehlo()
+            s.starttls()
+            s.ehlo()
+            s.login(sender, app_password)
+            s.sendmail(sender, [recipient], msg_bytes)
+        print(f"[info] sent via port 587 (STARTTLS) to {recipient}")
+        return
+    except Exception as e:
+        errors.append(f"port 587: {e}")
+
+    sys.exit(f"[error] all SMTP attempts failed:\n" + "\n".join(errors))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--subject", required=True)
-    parser.add_argument("--body-file", help="Path to an HTML file with the email body. If omitted, reads from stdin.")
+    parser.add_argument("--body-file", help="Path to HTML file with the email body. Reads stdin if omitted.")
     args = parser.parse_args()
 
     sender = os.environ.get("GMAIL_ADDRESS")
-    app_password = os.environ.get("GMAIL_APP_PASSWORD")
+    app_password = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
     recipient = os.environ.get("DIGEST_RECIPIENT", sender)
 
     if not sender or not app_password:
@@ -51,11 +79,7 @@ def main():
     msg["To"] = recipient
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
-        server.login(sender, app_password)
-        server.sendmail(sender, [recipient], msg.as_string())
-
-    print(f"[info] sent digest to {recipient}")
+    _send(msg.as_bytes(), sender, recipient, app_password)
 
 
 if __name__ == "__main__":
