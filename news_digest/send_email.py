@@ -25,27 +25,27 @@ sys.stderr.reconfigure(encoding="utf-8")
 SMTP_HOST = "smtp.gmail.com"
 
 
-def _send(msg_bytes, sender, recipient, app_password):
+def _send(msg_str, sender, recipient, app_password):
     """Try port 465 (SSL) first, fall back to 587 (STARTTLS)."""
     errors = []
     # Port 465 — SSL
     try:
         with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=30) as s:
             s.login(sender, app_password)
-            s.sendmail(sender, [recipient], msg_bytes)
+            s.sendmail(sender, [recipient], msg_str)
         print(f"[info] sent via port 465 (SSL) to {recipient}")
         return
     except Exception as e:
         errors.append(f"port 465: {e}")
 
-    # Port 587 — STARTTLS (common cloud environments block 465)
+    # Port 587 — STARTTLS (cloud environments often block 465)
     try:
         with smtplib.SMTP(SMTP_HOST, 587, timeout=30) as s:
             s.ehlo()
             s.starttls()
             s.ehlo()
             s.login(sender, app_password)
-            s.sendmail(sender, [recipient], msg_bytes)
+            s.sendmail(sender, [recipient], msg_str)
         print(f"[info] sent via port 587 (STARTTLS) to {recipient}")
         return
     except Exception as e:
@@ -73,13 +73,17 @@ def main():
     else:
         html_body = sys.stdin.read()
 
+    # Ensure email clients render Korean correctly regardless of their default charset.
+    if "<meta charset" not in html_body.lower():
+        html_body = '<meta charset="utf-8">\n' + html_body
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = args.subject
     msg["From"] = sender
     msg["To"] = recipient
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    _send(msg.as_bytes(), sender, recipient, app_password)
+    _send(msg.as_string(), sender, recipient, app_password)
 
 
 if __name__ == "__main__":
