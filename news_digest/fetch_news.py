@@ -19,17 +19,30 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 FEEDS = {
-    "WSJ Markets": "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
-    "WSJ World News": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
-    "CNBC Economy": "https://www.cnbc.com/id/20910258/device/rss/rss.html",
-    "Federal Reserve": "https://www.federalreserve.gov/feeds/press_all.xml",
-    "Investing.com Economy": "https://www.investing.com/rss/news_14.rss",
+    # Real-time markets & macro data
+    "WSJ Markets":            "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
+    "WSJ World News":         "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+    "CNBC Economy":           "https://www.cnbc.com/id/20910258/device/rss/rss.html",
+    "Investing.com Economy":  "https://www.investing.com/rss/news_14.rss",
+    # Premium outlets — titles & summaries free via RSS
+    "Bloomberg Economics":    "https://feeds.bloomberg.com/economics/news.rss",
+    "FT Economics":           "https://www.ft.com/economics?format=rss",
+    "The Economist Finance":  "https://www.economist.com/finance-and-economics/rss.xml",
+    "Project Syndicate":      "https://www.project-syndicate.org/rss",
+    # Official / central bank
+    "Federal Reserve":        "https://www.federalreserve.gov/feeds/press_all.xml",
+    # IMF Blog & World Bank Blogs: RSS currently blocked externally — omitted
 }
 
-HOURS_BACK = 30          # how far back to look for "today's" news
+HOURS_BACK = 36          # how far back to look for "today's" news
 MAX_PER_FEED = 8         # fallback cap when dates can't be parsed
-USER_AGENT = "Mozilla/5.0 (compatible; macro-news-digest/1.0)"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 TAG_RE = re.compile(r"<[^>]+>")
+
+import http.cookiejar as _cj
+_OPENER = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(_cj.CookieJar())
+)
 
 
 def strip_html(text):
@@ -39,8 +52,11 @@ def strip_html(text):
 
 
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    req = urllib.request.Request(url, headers={
+        "User-Agent": USER_AGENT,
+        "Accept": "application/rss+xml,application/xml,text/xml,*/*",
+    })
+    with _OPENER.open(req, timeout=20) as resp:
         return resp.read()
 
 
