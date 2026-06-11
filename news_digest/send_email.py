@@ -5,7 +5,7 @@ to Gmail SMTP (ports 465 → 587) for local use.
 
 Environment variables:
   RESEND_API_KEY      - Resend.com API key (primary, cloud-friendly)
-  DIGEST_RECIPIENT    - recipient address (required)
+  DIGEST_RECIPIENT    - recipient address(es), comma-separated (required)
   GMAIL_ADDRESS       - Gmail sender (SMTP fallback only)
   GMAIL_APP_PASSWORD  - 16-char Gmail App Password (SMTP fallback only)
 
@@ -28,11 +28,11 @@ SMTP_HOST = "smtp.gmail.com"
 RESEND_FROM = "onboarding@resend.dev"
 
 
-def _send_resend(api_key, recipient, subject, html_body):
+def _send_resend(api_key, recipients, subject, html_body):
     """Send via Resend HTTP API (HTTPS port 443 — never blocked)."""
     payload = json.dumps({
         "from": RESEND_FROM,
-        "to": [recipient],
+        "to": recipients,
         "subject": subject,
         "html": html_body,
     }).encode("utf-8")
@@ -46,17 +46,17 @@ def _send_resend(api_key, recipient, subject, html_body):
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         result = json.loads(resp.read())
-    print(f"[info] sent via Resend API to {recipient} (id: {result.get('id', '?')})")
+    print(f"[info] sent via Resend API to {recipients} (id: {result.get('id', '?')})")
 
 
-def _send_smtp(sender, app_password, recipient, subject, html_body):
+def _send_smtp(sender, app_password, recipients, subject, html_body):
     """Gmail SMTP fallback: try port 465 then 587."""
     if "<meta charset" not in html_body.lower():
         html_body = '<meta charset="utf-8">\n' + html_body
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = sender
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html_body, "html", "utf-8"))
     msg_str = msg.as_string()
 
@@ -71,8 +71,8 @@ def _send_smtp(sender, app_password, recipient, subject, html_body):
                 if not use_ssl:
                     s.ehlo(); s.starttls(); s.ehlo()
                 s.login(sender, app_password)
-                s.sendmail(sender, [recipient], msg_str)
-            print(f"[info] sent via SMTP port {port} to {recipient}")
+                s.sendmail(sender, recipients, msg_str)
+            print(f"[info] sent via SMTP port {port} to {recipients}")
             return
         except Exception as e:
             errors.append(f"port {port}: {e}")
@@ -86,9 +86,10 @@ def main():
     parser.add_argument("--body-file", help="Path to HTML file. Reads stdin if omitted.")
     args = parser.parse_args()
 
-    recipient = os.environ.get("DIGEST_RECIPIENT") or os.environ.get("GMAIL_ADDRESS")
-    if not recipient:
+    recipient_str = os.environ.get("DIGEST_RECIPIENT") or os.environ.get("GMAIL_ADDRESS")
+    if not recipient_str:
         sys.exit("[error] DIGEST_RECIPIENT environment variable is required")
+    recipients = [r.strip() for r in recipient_str.split(",") if r.strip()]
 
     if args.body_file:
         with open(args.body_file, encoding="utf-8") as f:
@@ -98,7 +99,7 @@ def main():
 
     resend_key = os.environ.get("RESEND_API_KEY", "")
     if resend_key:
-        _send_resend(resend_key, recipient, args.subject, html_body)
+        _send_resend(resend_key, recipients, args.subject, html_body)
         return
 
     # SMTP fallback
@@ -106,7 +107,7 @@ def main():
     app_password = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
     if not sender or not app_password:
         sys.exit("[error] Set RESEND_API_KEY, or both GMAIL_ADDRESS and GMAIL_APP_PASSWORD")
-    _send_smtp(sender, app_password, recipient, args.subject, html_body)
+    _send_smtp(sender, app_password, recipients, args.subject, html_body)
 
 
 if __name__ == "__main__":
